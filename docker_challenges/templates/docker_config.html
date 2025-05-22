@@ -50,15 +50,15 @@
                 <div class="form-group">
                     <label for="repositories">Repositories</label>
                     <select id="repositories" name="repositories" class="form-control" size="10" multiple>
-                        {% if form.repositories.choices[0][0] == "ERROR" %}
-                            <option value="False" disabled>{{ form.repositories.choices[0][1] }}</option>
-                        {% elif form.repositories %}
-                            {% for key, value in form.repositories.choices %}
-                                <option value="{{ key }}" {% if key in repos %}selected{% endif %}>{{ value }}</option>
-                            {% endfor %}
-                        {% else %}
-                            <option value="False" disabled>Connect Docker API First</option>
-                        {% endif %}
+                      {% if form.repositories.choices[0][0] == "ERROR" %}
+                        <option value="False" disabled>{{ form.repositories.choices[0][1] }}</option>
+                      {% elif form.repositories %}
+                        {% for key, value in form.repositories.choices|sort(attribute=1, case_sensitive=False) %}
+                          <option value="{{ key }}" {% if key in repos %}selected{% endif %}>{{ value }}</option>
+                        {% endfor %}
+                      {% else %}
+                        <option value="False" disabled>Connect Docker API First</option>
+                      {% endif %}
                     </select>
                 </div>
                 {{ form.nonce() }}
