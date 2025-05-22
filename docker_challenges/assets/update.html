@@ -15,7 +15,7 @@
 </div>
 {% endblock %}
 {% block footer %}
-<script>
+<script {% if csp_nonce %}nonce="{{csp_nonce}}"{%endif%}>
 var DOCKER_IMAGE = '{{ challenge.docker_image }}';
 </script>
 {% endblock %}

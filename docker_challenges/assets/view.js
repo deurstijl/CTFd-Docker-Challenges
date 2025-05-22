@@ -12,10 +12,41 @@ CTFd._internal.challenge.render = function(markdown) {
 
 
 CTFd._internal.challenge.postRender = function() {
-    const containername = CTFd._internal.challenge.data.docker_image;
-    get_docker_status(containername);
-    createWarningModalBody();
+    // const containername = CTFd._internal.challenge.data.docker_image;
+    // get_docker_status(containername);
+    // createWarningModalBody();
 }
+
+document.addEventListener("shown.bs.modal", (event) => {
+    // This checks if the challenge modal for dockers is loaded.
+    // Which is the start of it all!
+    const modal = event.target;
+    // Check if it's the challenge modal
+    if (modal.id !== "challenge-window") return;
+    // Check if this challenge has a docker button
+    const dockerBtn = modal.querySelector(".btn-docker-start");
+    if (dockerBtn) {
+      // This is a Docker challenge !!!!!
+      // Lets start the logic:
+      
+      // Hide the connection info
+      const connectionlink = CTFd.lib.$('.challenge-connection-info');
+      connectionlink.hide();
+
+      const containername = CTFd._internal.challenge.data.docker_image;
+      console.log("docker_image: " + containername);
+      get_docker_status(containername);
+
+      createWarningModalBody();
+
+      // Add onclick event listener for the start button.
+      dockerBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        const image = dockerBtn.dataset.image;
+        start_container(image); // your plugin's logic
+      });
+    }
+});
 
 function createWarningModalBody(){
     // Creates the Warning Modal placeholder, that will be updated when stuff happens.
@@ -25,91 +56,110 @@ function createWarningModalBody(){
 }
 
 function get_docker_status(container) {
-    // Use CTFd.fetch to call the API
-    CTFd.fetch("/api/v1/docker_status").then(response => response.json())
-    .then(result => {
-        result.data.forEach(item => {
-            if (item.docker_image == container) {
-                // Split the ports and create the data string
-                var ports = String(item.ports).split(',');
-                var data = '';
-                
-                ports.forEach(port => {
-                    port = String(port);
-                    data = data + 'Host: ' + item.host + ' Port: ' + port + '<br />';
-                });
-                // Update the DOM with the docker container information
-                CTFd.lib.$('#docker_container').html('<pre>Docker Container Information:<br />' + data + 
-                '<div class="mt-2" id="' + String(item.instance_id).substring(0, 10) + '_revert_container"></div>');
+    console.log("Status for: " + container);
+    const dockerContainerDiv = CTFd.lib.$('#docker_container');
+    dockerContainerDiv.html("");  // Clear existing content
 
-                // Update the DOM with connection info information.
-                // Note that connection info should contain "host" and "port"
-                var $link = CTFd.lib.$('.challenge-connection-info');
-                $link.html($link.html().replace(/host/gi, item.host));
-                $link.html($link.html().replace(/port|\b\d{5}\b/gi, ports[0].split("/")[0]));
+    CTFd.fetch("/api/v1/docker_status")
+        .then(response => response.json())
+        .then(result => {
+            console.log(result.data);
+            let matched = false;
+            const connectionlink = CTFd.lib.$('.challenge-connection-info');
 
-                // Check if there are links in there, if not and we use a http[s] address, make it a link
-                CTFd.lib.$(".challenge-connection-info").each(function () {
-                    const $span = CTFd.lib.$(this);
-                    const html = $span.html();
-                
-                    // Skip if already has a link
-                    if (html.includes("<a")) {
-                        return;
-                    }
-                
-                    // If it contains "http", try to extract and wrap it
-                    const urlMatch = html.match(/(http[s]?:\/\/[^\s<]+)/);
-                
-                    if (urlMatch) {
-                        const url = urlMatch[0];
-                        const linked = html.replace(url, `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
-                        $span.html(linked);
-                    }
-                });
+            result.data.forEach(item => {
+                if (item.docker_image === container) {
+                    matched = true;
 
-                // Set up the countdown timer
-                var countDownDate = new Date(parseInt(item.revert_time) * 1000).getTime();
-                var x = setInterval(function() {
-                    var now = new Date().getTime();
-                    var distance = countDownDate - now;
-                    var minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-                    var seconds = Math.floor((distance % (1000 * 60)) / 1000);
-                    if (seconds < 10) {
-                        seconds = "0" + seconds;
-                    }
+                    const ports = String(item.ports).split(',');
+                    const instanceIdShort = String(item.instance_id).substring(0, 10);
+                    const revertContainerId = `${instanceIdShort}_revert_container`;
 
-                    // Update the countdown display
-                    CTFd.lib.$("#" + String(item.instance_id).substring(0, 10) + "_revert_container").html('Stop or Revert Available in ' + minutes + ':' + seconds);
+                    let data = ports.map(port => `
+                        <div>
+                            <strong>Host:</strong> <span class="text-monospace me-3">${item.host}</span>
+                            <strong>Port:</strong> <span class="text-monospace">${String(port).trim()}</span>
+                        </div>
+                    `).join('');
 
-                    // Check if the countdown is finished and enable the revert button
-                    if (distance < 0) {
-                        clearInterval(x);
-                        CTFd.lib.$("#" + String(item.instance_id).substring(0, 10) + "_revert_container").html(
-                            '<a onclick="start_container(\'' + item.docker_image + '\');" class="btn btn-dark">' +
-                            '<small style="color:white;"><i class="fas fa-redo"></i> Revert</small></a> '+
-                            '<a onclick="stop_container(\'' + item.docker_image + '\');" class="btn btn-dark">' +
-                            '<small style="color:white;"><i class="fas fa-redo"></i> Stop</small></a>'
-                        );
-                    }
-                }, 1000);
+                    dockerContainerDiv.html(`
+                        <div class="mb-2"><strong>Docker Container Information:</strong></div>
+                        ${data}
+                        <div class="mt-2" id="${revertContainerId}"></div>
+                    `);
 
-                return false; // Stop once the correct container is found
+                    // Update challenge-connection-info and show it
+                    connectionlink.html(connectionlink.html()
+                        .replace(/host/gi, item.host)
+                        .replace(/port|\b\d{5}\b/gi, ports[0].split("/")[0]));
+
+                    CTFd.lib.$(".challenge-connection-info").each(function () {
+                        const $span = CTFd.lib.$(this);
+                        const html = $span.html();
+
+                        if (!html.includes("<a")) {
+                            const urlMatch = html.match(/(http[s]?:\/\/[^\s<]+)/);
+                            if (urlMatch) {
+                                const url = urlMatch[0];
+                                const linked = html.replace(url, `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
+                                $span.html(linked);
+                            }
+                        }
+                    });
+                    connectionlink.show();
+
+                    const countDownDate = new Date(parseInt(item.revert_time) * 1000).getTime();
+
+                    const intervalId = setInterval(function () {
+                        const now = new Date().getTime();
+                        const distance = countDownDate - now;
+                        const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                        let seconds = Math.floor((distance % (1000 * 60)) / 1000);
+                        seconds = seconds < 10 ? "0" + seconds : seconds;
+
+                        const revertContainer = CTFd.lib.$(`#${revertContainerId}`);
+
+                        if (distance < 0) {
+                            clearInterval(intervalId);
+
+                            const revertBtn = document.createElement('button');
+                            revertBtn.className = 'btn btn-dark me-2';
+                            revertBtn.innerHTML = '<i class="fas fa-redo"></i> Revert';
+                            revertBtn.addEventListener('click', () => start_container(item.docker_image));
+
+                            const stopBtn = document.createElement('button');
+                            stopBtn.className = 'btn btn-dark';
+                            stopBtn.innerHTML = '<i class="fas fa-stop"></i> Stop';
+                            stopBtn.addEventListener('click', () => stop_container(item.docker_image));
+
+                            revertContainer.html('');
+                            revertContainer[0].appendChild(revertBtn);
+                            revertContainer[0].appendChild(stopBtn);
+                        } else {
+                            revertContainer.text(`Stop or Revert Available in ${minutes}:${seconds}`);
+                        }
+                    }, 1000);
+                }
+            });
+
+            // If no matching container, display start button
+            if (!matched) {
+                connectionlink.hide();
+                const startBtn = document.createElement('button');
+                startBtn.className = 'btn btn-dark';
+                startBtn.innerHTML = '<i class="fas fa-play"></i> Start Docker Instance for challenge';
+                startBtn.addEventListener('click', () => start_container(CTFd._internal.challenge.data.docker_image));
+
+                dockerContainerDiv.html('');
+                dockerContainerDiv[0].appendChild(startBtn);
             }
+        })
+        .catch(error => {
+            console.error('Error fetching docker status:', error);
         });
-    })
-    .catch(error => {
-        console.error('Error fetching docker status:', error);
-    });
-    // Display the normal start button, if there is no need for updating
-    const NormalStartButtonHTML=`
-        <span>
-            <a onclick="start_container('${CTFd._internal.challenge.data.docker_image}');" class='btn btn-dark'>
-                <small style='color:white;'><i class="fas fa-play"></i>  Start Docker Instance for challenge</small>
-            </a>
-        </span>`
-    CTFd.lib.$('#docker_container').html(NormalStartButtonHTML);
 }
+
+
 
 function stop_container(container) {
     if (confirm("Are you sure you want to stop the container for: \n" + CTFd._internal.challenge.data.name)) {
@@ -155,7 +205,9 @@ function start_container(container) {
     }).then(function (response) {
         return response.json().then(function (json) {
             if (response.ok) {
+                console.log()
                 get_docker_status(container);
+
     
                 updateWarningModal({
                     title: "Attention!",
@@ -182,19 +234,18 @@ function start_container(container) {
 
 // WE NEED TO CREATE THE MODAL FIRST, and this should be only used to fill it.
 
-function updateWarningModal({
-    title , warningText, buttonText, onClose } = {}) {
+function updateWarningModal({ title, warningText, buttonText, onClose } = {}) {
     const modalHTML = `
-        <div id="warningModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:9999; background-color:rgba(0,0,0,0.5);">
-          <div style="position:relative; margin:10% auto; width:400px; background:white; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,0.3); overflow:hidden;">
-            <div class="modal-header bg-warning text-dark" style="padding:1rem; display:flex; justify-content:space-between; align-items:center;">
-              <h5 class="modal-title" style="margin:0;">${title}</h5>
-              <button type="button" id="warningCloseBtn" style="border:none; background:none; font-size:1.5rem; line-height:1; cursor:pointer;">&times;</button>
+        <div id="warningModal" class="custom-modal-backdrop">
+          <div class="custom-modal-content">
+            <div class="custom-modal-header">
+              <h5 class="modal-title">${title}</h5>
+              <button type="button" id="warningCloseBtn" class="custom-modal-close">&times;</button>
             </div>
-            <div class="modal-body" style="padding:1rem;">
+            <div class="custom-modal-body">
               ${warningText}
             </div>
-            <div class="modal-footer" style="padding:1rem; text-align:right; border-top:1px solid #dee2e6;">
+            <div class="custom-modal-footer">
               <button type="button" class="btn btn-secondary" id="warningOkBtn">${buttonText}</button>
             </div>
           </div>
@@ -205,7 +256,7 @@ function updateWarningModal({
     // Show the modal
     CTFd.lib.$("#warningModal").show();
 
-    // Close logic with callback
+    // Close logic
     const closeModal = () => {
         CTFd.lib.$("#warningModal").hide();
         if (typeof onClose === 'function') {
@@ -213,37 +264,47 @@ function updateWarningModal({
         }
     };
 
+    // Close on button or background click
     CTFd.lib.$("#warningCloseBtn").on("click", closeModal);
     CTFd.lib.$("#warningOkBtn").on("click", closeModal);
+    CTFd.lib.$("#warningModal").on("click", function (e) {
+        if (e.target === this) closeModal();
+    });
 }
 
-// In order to capture the flag submission, and remove the "Revert" and "Stop" buttons after solving a challenge
-// We need to hook that call, and do this manually.
-function checkForCorrectFlag() {
-    const challengeWindow = document.querySelector('#challenge-window');
-    if (!challengeWindow || getComputedStyle(challengeWindow).display === 'none') {
-        // console.log("❌ Challenge window hidden or closed, stopping check.");
-        clearInterval(checkInterval);
-        checkInterval = null;
-        return;
+// Our own submit, which will be picked up by challenges.js
+CTFd._internal.challenge.submit = async function () {
+    const input = document.querySelector("#challenge-input");
+    const chalId = document.querySelector("#challenge-id");
+  
+    if (!input || !chalId) {
+      throw new Error("Challenge input or ID not found");
     }
-
-    const notification = document.querySelector('.notification-row .alert');
-    if (!notification) return;
-
-    const strong = notification.querySelector('strong');
-    if (!strong) return;
-
-    const message = strong.textContent.trim();
-
-    if (message.includes("Correct")) {
-        // console.log("✅ Correct flag detected:", message);
+  
+    const payload = {
+      challenge_id: parseInt(chalId.value, 10),
+      submission: input.value
+    };
+  
+    const response = await CTFd.fetch("/api/v1/challenges/attempt", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      credentials: "same-origin", // optional but often included for cookies/session
+      body: JSON.stringify(payload)
+    });
+  
+    const result = await response.json();
+    
+    // Check if the submission was correct
+    if (result?.data?.status === "correct") {
         get_docker_status(CTFd._internal.challenge.data.docker_image);
-        clearInterval(checkInterval);
-        checkInterval = null;
+        console.log("Submission is correct!");
     }
-}
-
-if (!checkInterval) {
-    var checkInterval = setInterval(checkForCorrectFlag, 1500);
-}
+    if (result?.data?.status === "incorrect") {
+        console.log("Submission is INcorrect!");
+    }
+    return result;
+};
+  

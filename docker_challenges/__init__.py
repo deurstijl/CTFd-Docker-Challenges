@@ -279,12 +279,15 @@ def get_repositories(docker, tags=False, repos=False):
 
 
 def get_unavailable_ports(docker):
+    from flask import current_app
+    current_app.logger.error("This is an error")
+
     r = do_request(docker, '/containers/json?all=1')
     result = list()
     for i in r.json():
         if not i['Ports'] == []:
             for p in i['Ports']:
-                result.append(p['PublicPort'])
+                result.append(p.get('PublicPort'))
     return result
 
 
