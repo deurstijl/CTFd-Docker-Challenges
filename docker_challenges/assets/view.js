@@ -76,9 +76,9 @@ function get_docker_status(container) {
                     const revertContainerId = `${instanceIdShort}_revert_container`;
 
                     let data = ports.map(port => `
-                        <div>
-                            <strong>Host:</strong> <span class="text-monospace me-3">${item.host}</span>
-                            <strong>Port:</strong> <span class="text-monospace">${String(port).trim()}</span>
+                        <div class="small">
+                            Host: <span class="text-monospace me-3">${item.host}</span>
+                            Port: <span class="text-monospace">${String(port).trim()}</span>
                         </div>
                     `).join('');
 
